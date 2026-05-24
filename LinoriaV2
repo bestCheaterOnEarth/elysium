@@ -28,6 +28,7 @@ local Library = {
     RegistryMap = {};
 
     HudRegistry = {};
+    Keybinds = {};
 
     FontColor = Color3.fromRGB(255, 255, 255);
     MainColor = Color3.fromRGB(28, 28, 28);
@@ -44,6 +45,7 @@ local Library = {
 
     OpenedFrames = {};
     DependencyBoxes = {};
+    DraggableExclusions = {};
 
     Signals = {};
     ScreenGui = ScreenGui;
@@ -234,13 +236,27 @@ function Library:MakeDraggable(Instance, Cutoff)
     end;
 
     Instance.InputBegan:Connect(function(Input)
-        if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+            local InputPos = Input.Position
             if Library._TabButtons then
                 for _, btn in next, Library._TabButtons do
                     if btn and btn.AbsolutePosition and btn.AbsoluteSize then
                         local ap, as = btn.AbsolutePosition, btn.AbsoluteSize;
-                        if Mouse.X >= ap.X and Mouse.X <= ap.X + as.X
-                            and Mouse.Y >= ap.Y and Mouse.Y <= ap.Y + as.Y then
+                        if InputPos.X >= ap.X and InputPos.X <= ap.X + as.X
+                            and InputPos.Y >= ap.Y and InputPos.Y <= ap.Y + as.Y then
+                            return;
+                        end;
+                    end;
+                end;
+            end;
+
+            -- Block dragging when the input lands inside a registered exclusion (groupbox, tabbox)
+            if Library.DraggableExclusions then
+                for _, excl in next, Library.DraggableExclusions do
+                    if excl and excl.Parent and excl.Visible then
+                        local ap, as = excl.AbsolutePosition, excl.AbsoluteSize;
+                        if InputPos.X >= ap.X and InputPos.X <= ap.X + as.X
+                            and InputPos.Y >= ap.Y and InputPos.Y <= ap.Y + as.Y then
                             return;
                         end;
                     end;
@@ -248,11 +264,7 @@ function Library:MakeDraggable(Instance, Cutoff)
             end;
 
             local FramePos = Instance.AbsolutePosition;
-            DragOffset = Vector2.new(Mouse.X - FramePos.X, Mouse.Y - FramePos.Y);
-
-            if DragOffset.Y > (Cutoff or 40) then
-                return;
-            end;
+            DragOffset = Vector2.new(InputPos.X - FramePos.X, InputPos.Y - FramePos.Y);
 
             Dragging = true;
             DragInput = Input;
@@ -262,12 +274,13 @@ function Library:MakeDraggable(Instance, Cutoff)
     end);
 
     Library:GiveSignal(InputService.InputChanged:Connect(function(Input)
-        if Dragging and (Input.UserInputType == Enum.UserInputType.MouseMovement) then
+        if Dragging and (Input == DragInput or Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch) then
+            local InputPos = Input.Position
             local TargetPos = UDim2.new(
                 0,
-                Mouse.X - DragOffset.X + (Instance.Size.X.Offset * Instance.AnchorPoint.X),
+                InputPos.X - DragOffset.X + (Instance.Size.X.Offset * Instance.AnchorPoint.X),
                 0,
-                Mouse.Y - DragOffset.Y + (Instance.Size.Y.Offset * Instance.AnchorPoint.Y)
+                InputPos.Y - DragOffset.Y + (Instance.Size.Y.Offset * Instance.AnchorPoint.Y)
             );
 
             TweenService:Create(
@@ -1166,6 +1179,7 @@ do
         });
 
         local ContainerLabel = Library:CreateLabel({
+            Active = true;
             TextXAlignment = Enum.TextXAlignment.Left;
             Size = UDim2.new(1, 0, 0, 18);
             TextSize = 13;
@@ -1173,6 +1187,19 @@ do
             ZIndex = 110;
             Parent = Library.KeybindContainer;
         },  true);
+
+        ContainerLabel.InputBegan:Connect(function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
+                KeyPicker.Toggled = not KeyPicker.Toggled;
+                KeyPicker:DoClick();
+                KeyPicker:Update();
+            end;
+        end);
+
+        if not Info.NoUI then
+            KeyPicker.ContainerLabel = ContainerLabel;
+            table.insert(Library.Keybinds, KeyPicker);
+        end;
 
         local Modes = Info.Modes or { 'Always', 'Toggle', 'Hold' };
         local ModeButtons = {};
@@ -1229,33 +1256,78 @@ do
             end;
 
             local State = KeyPicker:GetState();
+            local isNone = (KeyPicker.Value:lower() == 'none')
+            local shouldHide = isNone and (Toggles.OnlyShowBindedKeybinds and Toggles.OnlyShowBindedKeybinds.Value)
 
-            ContainerLabel.Text = string.format('[%s] %s (%s)', KeyPicker.Value, Info.Text, KeyPicker.Mode);
+            ContainerLabel.Text = string.format('%s / %s / %s', Info.Text, KeyPicker.Value, KeyPicker.Mode:lower());
 
-            ContainerLabel.Visible = true;
             ContainerLabel.TextColor3 = State and Library.AccentColor or Library.FontColor;
-
             Library.RegistryMap[ContainerLabel].Properties.TextColor3 = State and 'AccentColor' or 'FontColor';
 
-            local YSize = 0
-            local XSize = 0
+            local targetTextTrans = shouldHide and 1 or 0
+            local targetStrokeTrans = shouldHide and 1 or 0
+            local targetSize = shouldHide and UDim2.new(1, 0, 0, 0) or UDim2.new(1, 0, 0, 18)
 
-            for _, Label in next, Library.KeybindContainer:GetChildren() do
-                if Label:IsA('TextLabel') and Label.Visible then
-                    YSize = YSize + 18;
-                    if (Label.TextBounds.X > XSize) then
-                        XSize = Label.TextBounds.X
-                    end
+            local UIStroke = ContainerLabel:FindFirstChildOfClass('UIStroke')
+
+            if not KeyPicker.Initialized then
+                KeyPicker.Initialized = true;
+                ContainerLabel.Size = targetSize;
+                ContainerLabel.TextTransparency = targetTextTrans;
+                if UIStroke then
+                    UIStroke.Transparency = targetStrokeTrans;
+                end;
+                if not shouldHide then
+                    ContainerLabel.Visible = true;
+                end;
+            else
+                if not shouldHide then
+                    ContainerLabel.Visible = true;
+                end;
+
+                local TweenInfoObj = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out);
+                TweenService:Create(ContainerLabel, TweenInfoObj, {
+                    TextTransparency = targetTextTrans;
+                    Size = targetSize;
+                }):Play();
+
+                if UIStroke then
+                    TweenService:Create(UIStroke, TweenInfoObj, {
+                        Transparency = targetStrokeTrans;
+                    }):Play();
                 end;
             end;
 
-            Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10, 210), 0, YSize + 23)
+            local TargetYSize = 0
+            local TargetXSize = 0
+
+            for _, kp in next, Library.Keybinds do
+                local kpNone = (kp.Value:lower() == 'none')
+                local kpHide = kpNone and (Toggles.OnlyShowBindedKeybinds and Toggles.OnlyShowBindedKeybinds.Value)
+                if not kpHide then
+                    TargetYSize = TargetYSize + 18;
+                    local label = kp.ContainerLabel;
+                    if label then
+                        if (label.TextBounds.X > TargetXSize) then
+                            TargetXSize = label.TextBounds.X;
+                        end;
+                    end;
+                end;
+            end;
+
+            local TweenInfoObj = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out);
+            TweenService:Create(Library.KeybindFrame, TweenInfoObj, {
+                Size = UDim2.new(0, math.max(TargetXSize + 10, 210), 0, TargetYSize + 23)
+            }):Play();
         end;
 
         function KeyPicker:GetState()
             if KeyPicker.Mode == 'Always' then
                 return true;
             elseif KeyPicker.Mode == 'Hold' then
+                if KeyPicker.Toggled then
+                    return true;
+                end;
                 if KeyPicker.Value == 'None' then
                     return false;
                 end
@@ -1334,7 +1406,11 @@ do
                     local Key;
 
                     if Input.UserInputType == Enum.UserInputType.Keyboard then
-                        Key = Input.KeyCode.Name;
+                        if Input.KeyCode == Enum.KeyCode.Backspace then
+                            Key = 'None';
+                        else
+                            Key = Input.KeyCode.Name;
+                        end;
                     elseif Input.UserInputType == Enum.UserInputType.MouseButton1 then
                         Key = 'MB1';
                     elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -1349,6 +1425,8 @@ do
 
                     Library:SafeCallback(KeyPicker.ChangedCallback, Input.KeyCode or Input.UserInputType)
                     Library:SafeCallback(KeyPicker.Changed, Input.KeyCode or Input.UserInputType)
+
+                    KeyPicker:Update();
 
                     Library:AttemptSave();
 
@@ -2758,7 +2836,7 @@ end;
 do
     Library.NotificationArea = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        Position = UDim2.new(0, 200, -0.1, 160);
+        Position = UDim2.new(0.01, 0, 0, 40);
         Size = UDim2.new(0, 300, 0, 200);
         ZIndex = 100;
         Parent = ScreenGui;
@@ -2766,7 +2844,7 @@ do
 
     Library:Create('UIListLayout', {
         Padding = UDim.new(0, 4);
-        FillDirection = Enum.FillDirection.Horizontal;
+        FillDirection = Enum.FillDirection.Vertical;
         SortOrder = Enum.SortOrder.LayoutOrder;
         Parent = Library.NotificationArea;
     });
@@ -2821,6 +2899,7 @@ do
     });
 
     local WatermarkLabel = Library:CreateLabel({
+        RichText = true;
         Position = UDim2.new(0, 5, 0, 0);
         Size = UDim2.new(1, -4, 1, 0);
         TextSize = 14;
@@ -2862,7 +2941,7 @@ do
     local ColorFrame = Library:Create('Frame', {
         BackgroundColor3 = Library.AccentColor;
         BorderSizePixel = 0;
-        Size = UDim2.new(1, 0, 0, 2);
+        Size = UDim2.new(0, 0, 0, 0);
         ZIndex = 102;
         Parent = KeybindInner;
     });
@@ -2876,15 +2955,28 @@ do
         Position = UDim2.fromOffset(0, 0),
         TextXAlignment = Enum.TextXAlignment.Center,
 
-        Text = 'Keybinds';
+        Text = 'catbinds';
         ZIndex = 104;
         Parent = KeybindInner;
     });
 
+    local KeybindLine = Library:Create('Frame', {
+        BackgroundColor3 = Library.AccentColor;
+        BorderSizePixel = 0;
+        Position = UDim2.new(0, 5, 0, 20);
+        Size = UDim2.new(1, -10, 0, 1);
+        ZIndex = 105;
+        Parent = KeybindInner;
+    });
+
+    Library:AddToRegistry(KeybindLine, {
+        BackgroundColor3 = 'AccentColor';
+    }, true);
+
     local KeybindContainer = Library:Create('Frame', {
         BackgroundTransparency = 1;
-        Size = UDim2.new(1, 0, 1, -20);
-        Position = UDim2.new(0, 0, 0, 20);
+        Size = UDim2.new(1, 0, 1, -22);
+        Position = UDim2.new(0, 0, 0, 22);
         ZIndex = 1;
         Parent = KeybindInner;
     });
@@ -2910,22 +3002,47 @@ function Library:SetWatermarkVisibility(Bool)
 end;
 
 function Library:SetWatermark(Text)
-    local X, Y = Library:GetTextBounds(Text, Library.Font, 14);
+    local CleanText = Text:gsub("<[^>]+>", "")
+    local X, Y = Library:GetTextBounds(CleanText, Library.Font, 14);
     Library.Watermark.Size = UDim2.new(0, X + 15, 0, (Y * 1.5) + 3);
-    Library:SetWatermarkVisibility(true)
+    
+    local isVisible = true
+    if Toggles.ShowWatermark and not Toggles.ShowWatermark.Value then
+        isVisible = false
+    end
+    Library:SetWatermarkVisibility(isVisible)
 
     Library.WatermarkText.Text = Text;
 end;
 
-function Library:Notify(Text, Time)
-    local XSize, YSize = Library:GetTextBounds(Text, Library.Font, 14);
+function Library:Notify(PropertiesOrText, Time)
+    local Title = ""
+    local Text = ""
+    if type(PropertiesOrText) == 'table' then
+        Title = PropertiesOrText.Title or ""
+        Text = PropertiesOrText.Text or ""
+        Time = PropertiesOrText.Time or Time
+    else
+        Text = PropertiesOrText or ""
+    end
 
-    YSize = YSize + 7
+    local HasTitle = (Title ~= "")
+    local TitleX, TitleY = 0, 0
+    if HasTitle then
+        TitleX, TitleY = Library:GetTextBounds(Title, Library.Font, 14)
+    end
+    local TextX, TextY = Library:GetTextBounds(Text, Library.Font, 14)
+
+    local Width = math.max(TitleX, TextX) + 16
+    local Height = TextY + 8
+    if HasTitle then
+        Height = TitleY + TextY + 12
+    end
 
     local NotifyOuter = Library:Create('Frame', {
         BorderColor3 = Color3.new(0, 0, 0);
         Position = UDim2.new(0, 100, 0, 10);
-        Size = UDim2.new(0, 0, 0, YSize);
+        Size = UDim2.new(0, 0, 0, Height);
         ClipsDescendants = true;
         ZIndex = 100;
         Parent = Library.NotificationArea;
@@ -2972,9 +3089,21 @@ function Library:Notify(Text, Time)
         end
     });
 
+    if HasTitle then
+        local TitleLabel = Library:CreateLabel({
+            Position = UDim2.new(0, 6, 0, 4);
+            Size = UDim2.new(1, -12, 0, TitleY);
+            Text = Title;
+            TextXAlignment = Enum.TextXAlignment.Left;
+            TextSize = 14;
+            ZIndex = 103;
+            Parent = InnerFrame;
+        });
+    end
+
     local NotifyLabel = Library:CreateLabel({
-        Position = UDim2.new(0, 4, 0, 0);
-        Size = UDim2.new(1, -4, 1, 0);
+        Position = HasTitle and UDim2.new(0, 6, 0, 4 + TitleY + 2) or UDim2.new(0, 6, 0, 0);
+        Size = HasTitle and UDim2.new(1, -12, 0, TextY) or UDim2.new(1, -12, 1, 0);
         Text = Text;
         TextXAlignment = Enum.TextXAlignment.Left;
         TextSize = 14;
@@ -2982,25 +3111,25 @@ function Library:Notify(Text, Time)
         Parent = InnerFrame;
     });
 
-    local LeftColor = Library:Create('Frame', {
+    local TopColor = Library:Create('Frame', {
         BackgroundColor3 = Library.AccentColor;
         BorderSizePixel = 0;
-        Position = UDim2.new(0, -1, 0, -1);
-        Size = UDim2.new(0, 3, 1, 2);
+        Position = UDim2.new(0, 0, 0, 0);
+        Size = UDim2.new(1, 0, 0, 2);
         ZIndex = 104;
         Parent = NotifyOuter;
     });
 
-    Library:AddToRegistry(LeftColor, {
+    Library:AddToRegistry(TopColor, {
         BackgroundColor3 = 'AccentColor';
     }, true);
 
-    pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, XSize + 8 + 4, 0, YSize), 'Out', 'Quad', 0.4, true);
+    pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, Width, 0, Height), 'Out', 'Quad', 0.4, true);
 
     task.spawn(function()
         wait(Time or 5);
 
-        pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, 0, 0, YSize), 'Out', 'Quad', 0.4, true);
+        pcall(NotifyOuter.TweenSize, NotifyOuter, UDim2.new(0, 0, 0, Height), 'Out', 'Quad', 0.4, true);
 
         wait(0.4);
 
@@ -3020,7 +3149,7 @@ function Library:CreateWindow(...)
     end
 
     if type(Config.Title) ~= 'string' then Config.Title = 'No title' end
-    if type(Config.TabPadding) ~= 'number' then Config.TabPadding = 0 end -- delete
+    if type(Config.TabPadding) ~= 'number' then Config.TabPadding = 0 end
     if type(Config.MenuFadeTime) ~= 'number' then Config.MenuFadeTime = 0.2 end
 
     if typeof(Config.Position) ~= 'UDim2' then Config.Position = UDim2.fromOffset(175, 50) end
@@ -3263,6 +3392,9 @@ function Library:CreateWindow(...)
                 Parent = Info.Side == 1 and LeftSide or RightSide;
             });
 
+            -- Register this groupbox frame so window dragging is blocked on it
+            table.insert(Library.DraggableExclusions, BoxOuter);
+
             Library:AddToRegistry(BoxOuter, {
                 BorderColor3 = 'OutlineColor';
             });
@@ -3361,6 +3493,9 @@ function Library:CreateWindow(...)
                 ZIndex = 2;
                 Parent = Info.Side == 1 and LeftSide or RightSide;
             });
+
+            -- Register tabbox frame so window dragging is blocked on it
+            table.insert(Library.DraggableExclusions, BoxOuter);
 
             Library:AddToRegistry(BoxOuter, {
                 BackgroundColor3 = 'BackgroundColor';
@@ -3715,14 +3850,8 @@ local ThemeManager = {} do
 
 	ThemeManager.Library = nil
 	ThemeManager.BuiltInThemes = {
-		['Default'] 		= { 1, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"1c1c1c","AccentColor":"0055ff","BackgroundColor":"141414","OutlineColor":"323232"}') },
-		['BBot'] 			= { 2, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"1e1e1e","AccentColor":"7e48a3","BackgroundColor":"232323","OutlineColor":"141414"}') },
-		['Fatality']		= { 3, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"1e1842","AccentColor":"c50754","BackgroundColor":"191335","OutlineColor":"3c355d"}') },
-		['Jester'] 			= { 4, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"242424","AccentColor":"db4467","BackgroundColor":"1c1c1c","OutlineColor":"373737"}') },
-		['Mint'] 			= { 5, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"242424","AccentColor":"3db488","BackgroundColor":"1c1c1c","OutlineColor":"373737"}') },
-		['Tokyo Night'] 	= { 6, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"191925","AccentColor":"6759b3","BackgroundColor":"16161f","OutlineColor":"323232"}') },
-		['Ubuntu'] 			= { 7, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"3e3e3e","AccentColor":"e2581e","BackgroundColor":"323232","OutlineColor":"191919"}') },
-		['Quartz'] 			= { 8, httpService:JSONDecode('{"FontColor":"ffffff","MainColor":"232330","AccentColor":"426e87","BackgroundColor":"1d1b26","OutlineColor":"27232f"}') },
+		['Catblox'] 		= { 1, httpService:JSONDecode('{"MainColor":"1e2030","AccentColor":"6e9ed7","OutlineColor":"323232","BackgroundColor":"0c1016","FontColor":"ffffff"}') },
+		['Evil Catblox'] 	= { 2, httpService:JSONDecode('{"MainColor":"301e1e","AccentColor":"d76e6e","OutlineColor":"323232","BackgroundColor":"2b1718","FontColor":"ffffff"}') },	
 	}
 
 	function ThemeManager:ApplyTheme(theme)
@@ -4138,6 +4267,29 @@ local SaveManager = {} do
 
     end
 
+	function SaveManager:Delete(name)
+		if (not name) then
+			return false, 'no config file is selected'
+		end
+
+		local fullPath = self.Folder .. '/settings/' .. name .. '.json'
+		if isfile(fullPath) then
+			delfile(fullPath)
+			
+			local autoloadFile = self.Folder .. '/settings/autoload.txt'
+			if isfile(autoloadFile) and readfile(autoloadFile) == name then
+				delfile(autoloadFile)
+				if SaveManager.AutoloadLabel then
+					SaveManager.AutoloadLabel:SetText('Current autoload config: none')
+				end
+			end
+			
+			return true
+		else
+			return false, 'file does not exist'
+		end
+	end
+
 	function SaveManager:SetLibrary(library)
 		self.Library = library
 	end
@@ -4202,6 +4354,18 @@ local SaveManager = {} do
 			end
 
 			self.Library:Notify(string.format('Overwrote config %q', name))
+		end):AddButton('Delete config', function()
+			local name = Options.SaveManager_ConfigList.Value
+
+			local success, err = self:Delete(name)
+			if not success then
+				return self.Library:Notify('Failed to delete config: ' .. err)
+			end
+
+			self.Library:Notify(string.format('Deleted config %q', name))
+
+			Options.SaveManager_ConfigList:SetValues(self:RefreshConfigList())
+			Options.SaveManager_ConfigList:SetValue(nil)
 		end)
 
 		section:AddButton('Refresh list', function()
@@ -4232,279 +4396,5 @@ end
 getgenv().ThemeManager = ThemeManager
 getgenv().SaveManager = SaveManager
 
-local Window = Library:CreateWindow({
-    Title = 'Lancelot',
-    Center = true,
-    AutoShow = true,
-    TabPadding = 0, -- this is useless now lol
-    MenuFadeTime = 0.2
-})
-
-local Tabs = {
-    Main = Window:AddTab('Main'),
-    ['UI Settings'] = Window:AddTab('Settings'),
-}
-
-local LeftGroupBox = Tabs.Main:AddLeftGroupbox('Groupbox')
-
-LeftGroupBox:AddToggle('MyToggle', {
-    Text = 'This is a toggle',
-    Default = true,
-    Tooltip = 'This is a tooltip',
-    Callback = function(Value)
-        print('[cb] MyToggle changed to:', Value)
-    end
-})
-
-Toggles.MyToggle:OnChanged(function()
-    print('MyToggle changed to:', Toggles.MyToggle.Value)
-end)
-
-Toggles.MyToggle:SetValue(false)
-
-local MyButton = LeftGroupBox:AddButton({
-    Text = 'Button',
-    Func = function()
-        print('You clicked a button!')
-    end,
-    DoubleClick = false,
-    Tooltip = 'This is the main button'
-})
-
-local MyButton2 = MyButton:AddButton({
-    Text = 'Sub button',
-    Func = function()
-        print('You clicked a sub button!')
-    end,
-    DoubleClick = true,
-    Tooltip = 'This is the sub button (double click me!)'
-})
-
-LeftGroupBox:AddLabel('This is a label')
-LeftGroupBox:AddLabel('This is a label\n\nwhich wraps its text!', true)
-LeftGroupBox:AddDivider()
-
-LeftGroupBox:AddSlider('MySlider', {
-    Text = 'This is my slider!',
-    Default = 0,
-    Min = 0,
-    Max = 5,
-    Rounding = 1,
-    Compact = false,
-    Callback = function(Value)
-        print('[cb] MySlider was changed! New value:', Value)
-    end
-})
-
-local Number = Options.MySlider.Value
-Options.MySlider:OnChanged(function()
-    print('MySlider was changed! New value:', Options.MySlider.Value)
-end)
-
-Options.MySlider:SetValue(3)
-
-LeftGroupBox:AddInput('MyTextbox', {
-    Default = 'My textbox!',
-    Numeric = false,
-    Finished = false,
-    Text = 'This is a textbox',
-    Tooltip = 'This is a tooltip',
-    Placeholder = 'Placeholder text',
-    Callback = function(Value)
-        print('[cb] Text updated. New text:', Value)
-    end
-})
-
-Options.MyTextbox:OnChanged(function()
-    print('Text updated. New text:', Options.MyTextbox.Value)
-end)
-
-LeftGroupBox:AddDropdown('MyDropdown', {
-    Values = { 'This', 'is', 'a', 'dropdown' },
-    Default = 1,
-    Multi = false,
-    Text = 'A dropdown',
-    Tooltip = 'This is a tooltip',
-    Callback = function(Value)
-        print('[cb] Dropdown got changed. New value:', Value)
-    end
-})
-
-Options.MyDropdown:OnChanged(function()
-    print('Dropdown got changed. New value:', Options.MyDropdown.Value)
-end)
-
-Options.MyDropdown:SetValue('This')
-
-LeftGroupBox:AddDropdown('MyMultiDropdown', {
-    Values = { 'This', 'is', 'a', 'dropdown' },
-    Default = 1,
-    Multi = true,
-    Text = 'A dropdown',
-    Tooltip = 'This is a tooltip',
-    Callback = function(Value)
-        print('[cb] Multi dropdown got changed:', Value)
-    end
-})
-
-Options.MyMultiDropdown:OnChanged(function()
-    print('Multi dropdown got changed:')
-    for key, value in next, Options.MyMultiDropdown.Value do
-        print(key, value)
-    end
-end)
-
-Options.MyMultiDropdown:SetValue({
-    This = true,
-    is = true,
-})
-
-LeftGroupBox:AddDropdown('MyPlayerDropdown', {
-    SpecialType = 'Player',
-    Text = 'A player dropdown',
-    Tooltip = 'This is a tooltip',
-    Callback = function(Value)
-        print('[cb] Player dropdown got changed:', Value)
-    end
-})
-
-LeftGroupBox:AddLabel('Color'):AddColorPicker('ColorPicker', {
-    Default = Color3.new(0, 1, 0),
-    Title = 'Some color',
-    Transparency = 0,
-    Callback = function(Value)
-        print('[cb] Color changed!', Value)
-    end
-})
-
-Options.ColorPicker:OnChanged(function()
-    print('Color changed!', Options.ColorPicker.Value)
-    print('Transparency changed!', Options.ColorPicker.Transparency)
-end)
-
-Options.ColorPicker:SetValueRGB(Color3.fromRGB(0, 255, 140))
-
-LeftGroupBox:AddLabel('Keybind'):AddKeyPicker('KeyPicker', {
-    Default = 'MB2',
-    SyncToggleState = false,
-    Mode = 'Toggle',
-    Text = 'Auto lockpick safes',
-    NoUI = false,
-    Callback = function(Value)
-        print('[cb] Keybind clicked!', Value)
-    end,
-    ChangedCallback = function(New)
-        print('[cb] Keybind changed!', New)
-    end
-})
-
-LeftGroupBox:AddLabel('Keybid'):AddKeyPicker('KeyPicker', {
-    Default = 'MB2',
-    SyncToggleState = false,
-    Mode = 'Toggle',
-    Text = 'Auto lockpick safes',
-    NoUI = false,
-    Callback = function(Value)
-        print('[cb] Keybind clicked!', Value)
-    end,
-    ChangedCallback = function(New)
-        print('[cb] Keybind changed!', New)
-    end
-})
-
-Options.KeyPicker:OnClick(function()
-    print('Keybind clicked!', Options.KeyPicker:GetState())
-end)
-
-Options.KeyPicker:OnChanged(function()
-    print('Keybind changed!', Options.KeyPicker.Value)
-end)
-
-task.spawn(function()
-    while true do
-        wait(1)
-        local state = Options.KeyPicker:GetState()
-        if state then
-            print('KeyPicker is being held down')
-        end
-        if Library.Unloaded then break end
-    end
-end)
-
-Options.KeyPicker:SetValue({ 'MB2', 'Toggle' })
-
-local LeftGroupBox2 = Tabs.Main:AddLeftGroupbox('Groupbox #2');
-LeftGroupBox2:AddLabel('Oh no...\nThis label spans multiple lines!\n\nWe\'re gonna run out of UI space...\nJust kidding! Scroll down!\n\n\nHello from below!', true)
-
-local TabBox = Tabs.Main:AddRightTabbox()
-local Tab1 = TabBox:AddTab('Tab 1')
-Tab1:AddToggle('Tab1Toggle', { Text = 'Tab1 Toggle' });
-
-local Tab2 = TabBox:AddTab('Tab 2')
-Tab2:AddToggle('Tab2Toggle', { Text = 'Tab2 Toggle' });
-
-local RightGroupbox = Tabs.Main:AddRightGroupbox('Groupbox #3');
-RightGroupbox:AddToggle('ControlToggle', { Text = 'Dependency box toggle' });
-
-local Depbox = RightGroupbox:AddDependencyBox();
-Depbox:AddToggle('DepboxToggle', { Text = 'Sub-dependency box toggle' });
-
-local SubDepbox = Depbox:AddDependencyBox();
-SubDepbox:AddSlider('DepboxSlider', { Text = 'Slider', Default = 50, Min = 0, Max = 100, Rounding = 0 });
-SubDepbox:AddDropdown('DepboxDropdown', { Text = 'Dropdown', Default = 1, Values = {'a', 'b', 'c'} });
-
-Depbox:SetupDependencies({
-    { Toggles.ControlToggle, true }
-});
-
-SubDepbox:SetupDependencies({
-    { Toggles.DepboxToggle, true }
-});
-
-Library:SetWatermarkVisibility(true)
-
-local FrameTimer = tick()
-local FrameCounter = 0;
-local FPS = 60;
-
-local WatermarkConnection = game:GetService('RunService').RenderStepped:Connect(function()
-    FrameCounter += 1;
-    if (tick() - FrameTimer) >= 1 then
-        FPS = FrameCounter;
-        FrameTimer = tick();
-        FrameCounter = 0;
-    end;
-    Library:SetWatermark(('Lancelot %s fps %s ms'):format(
-        math.floor(FPS),
-        math.floor(game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue())
-    ));
-end);
-
-Library.KeybindFrame.Visible = true;
-
-Library:OnUnload(function()
-    WatermarkConnection:Disconnect()
-    print('Unloaded!')
-    Library.Unloaded = true
-end)
-
-local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
-MenuGroup:AddButton('Unload', function() Library:Unload() end)
-MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'End', NoUI = true, Text = 'Menu keybind' })
-
-Library.ToggleKeybind = Options.MenuKeybind
-
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
-
-ThemeManager:SetFolder('Lancelot')
-SaveManager:SetFolder('Lancelot/game')
-
-SaveManager:BuildConfigSection(Tabs['UI Settings'])
-ThemeManager:ApplyToTab(Tabs['UI Settings'])
-SaveManager:LoadAutoloadConfig()
 
 return Library, ThemeManager, SaveManager
