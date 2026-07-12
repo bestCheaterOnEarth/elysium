@@ -984,7 +984,7 @@ do
 
 				Library:AttemptSave()
 			end
-		end)
+		)
 
 		DisplayFrame.InputBegan:Connect(function(Input)
 			if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
@@ -998,7 +998,7 @@ do
 				ContextMenu:Show()
 				ColorPicker:Hide()
 			end
-		end)
+		)
 
 		if TransparencyBoxInner then
 			TransparencyBoxInner.InputBegan:Connect(function(Input)
@@ -1158,56 +1158,7 @@ do
 			Parent = Library.KeybindContainer,
 		}, true)
 
-		local Modes = Info.Modes or { "Always", "Toggle", "Hold" }
-		local ModeButtons = {}
-
-		for Idx, Mode in next, Modes do
-			local ModeButton = {}
-
-			local Label = Library:CreateLabel({
-				Active = false,
-				Size = UDim2.new(1, 0, 0, 15),
-				TextSize = 12,
-				Text = Mode,
-				ZIndex = 16,
-				Parent = ModeSelectInner,
-			})
-
-			function ModeButton:Select()
-				for _, Button in next, ModeButtons do
-					Button:Deselect()
-				end
-
-				KeyPicker.Mode = Mode
-
-				Label.TextColor3 = Library.AccentColor
-				Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
-
-				ModeSelectOuter.Visible = false
-				KeyPicker:Update()
-			end
-
-			function ModeButton:Deselect()
-				KeyPicker.Mode = nil
-
-				Label.TextColor3 = Library.FontColor
-				Library.RegistryMap[Label].Properties.TextColor3 = "FontColor"
-			end
-
-			Label.InputBegan:Connect(function(Input)
-				if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-					ModeButton:Select()
-					Library:AttemptSave()
-				end
-			end)
-
-			if Mode == KeyPicker.Mode then
-				ModeButton:Select()
-			end
-
-			ModeButtons[Mode] = ModeButton
-		end
-
+		-- ========== MOVED: definições de métodos de KeyPicker para ANTES do laço Modes ==========
 		function KeyPicker:SyncParent()
 			if not KeyPicker.SyncToggleState then return end
 			if not ParentObj or not ParentObj.SetValue then return end
@@ -1325,6 +1276,58 @@ do
 			Library:SafeCallback(KeyPicker.Clicked, state)
 
 			KeyPicker:Update()
+		end
+		-- ========== FIM da movimentação ==========
+
+		-- Laço Modes (agora os métodos de KeyPicker já estão definidos)
+		local Modes = Info.Modes or { "Always", "Toggle", "Hold" }
+		local ModeButtons = {}
+
+		for Idx, Mode in next, Modes do
+			local ModeButton = {}
+
+			local Label = Library:CreateLabel({
+				Active = false,
+				Size = UDim2.new(1, 0, 0, 15),
+				TextSize = 12,
+				Text = Mode,
+				ZIndex = 16,
+				Parent = ModeSelectInner,
+			})
+
+			function ModeButton:Select()
+				for _, Button in next, ModeButtons do
+					Button:Deselect()
+				end
+
+				KeyPicker.Mode = Mode
+
+				Label.TextColor3 = Library.AccentColor
+				Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
+
+				ModeSelectOuter.Visible = false
+				KeyPicker:Update()
+			end
+
+			function ModeButton:Deselect()
+				KeyPicker.Mode = nil
+
+				Label.TextColor3 = Library.FontColor
+				Library.RegistryMap[Label].Properties.TextColor3 = "FontColor"
+			end
+
+			Label.InputBegan:Connect(function(Input)
+				if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+					ModeButton:Select()
+					Library:AttemptSave()
+				end
+			end)
+
+			if Mode == KeyPicker.Mode then
+				ModeButton:Select()
+			end
+
+			ModeButtons[Mode] = ModeButton
 		end
 
 		local Picking = false
@@ -2320,7 +2323,7 @@ do
 
 				Library:AttemptSave()
 			end
-		end)
+		)
 
 		Slider:Display()
 		Groupbox:AddBlank(Info.BlankSize or 6)
@@ -2871,23 +2874,23 @@ do
 			end
 
 			Depbox.Dependencies = Dependencies
-			Depbox:Update()
+				Depbox:Update()
+			end
+
+			Depbox.Container = Frame
+
+			setmetatable(Depbox, BaseGroupbox)
+
+			table.insert(Library.DependencyBoxes, Depbox)
+
+			return Depbox
 		end
 
-		Depbox.Container = Frame
-
-		setmetatable(Depbox, BaseGroupbox)
-
-		table.insert(Library.DependencyBoxes, Depbox)
-
-		return Depbox
+		BaseGroupbox.__index = Funcs
+		BaseGroupbox.__namecall = function(Table, Key, ...)
+			return Funcs[Key](...)
+		end
 	end
-
-	BaseGroupbox.__index = Funcs
-	BaseGroupbox.__namecall = function(Table, Key, ...)
-		return Funcs[Key](...)
-	end
-end
 
 -- < Create other UI elements >
 do
