@@ -1073,10 +1073,11 @@ do
 			SyncToggleState = Info.SyncToggleState or false,
 		}
 
-		if KeyPicker.SyncToggleState then
-			Info.Modes = { "Toggle" }
-			Info.Mode = "Toggle"
-		end
+		-- just remove that.. so we can have hold and toggle
+		-- if KeyPicker.SyncToggleState then
+		--     Info.Modes = { "Toggle" }
+		--     Info.Mode = "Toggle"
+		-- end
 
 		local PickOuter = Library:Create("Frame", {
 			BackgroundColor3 = Color3.new(0, 0, 0),
@@ -1183,6 +1184,7 @@ do
 				Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
 
 				ModeSelectOuter.Visible = false
+				KeyPicker:Update()
 			end
 
 			function ModeButton:Deselect()
@@ -1204,6 +1206,14 @@ do
 			end
 
 			ModeButtons[Mode] = ModeButton
+		end
+
+		function KeyPicker:SyncParent()
+			if not KeyPicker.SyncToggleState then return end
+			if not ParentObj or not ParentObj.SetValue then return end
+
+			local state = KeyPicker:GetState()
+			ParentObj:SetValue(state)
 		end
 
 		function KeyPicker:Update()
@@ -1229,6 +1239,8 @@ do
 			end
 
 			Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10, 210), 0, YSize + 25)
+
+			KeyPicker:SyncParent()
 		end
 
 		function KeyPicker:GetState()
@@ -1304,12 +1316,15 @@ do
 		end
 
 		function KeyPicker:DoClick()
-			if ParentObj.Type == "Toggle" and KeyPicker.SyncToggleState then
-				ParentObj:SetValue(not ParentObj.Value)
+			if KeyPicker.Mode == "Toggle" then
+				KeyPicker.Toggled = not KeyPicker.Toggled
 			end
 
-			Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
-			Library:SafeCallback(KeyPicker.Clicked, KeyPicker.Toggled)
+			local state = KeyPicker:GetState()
+			Library:SafeCallback(KeyPicker.Callback, state)
+			Library:SafeCallback(KeyPicker.Clicked, state)
+
+			KeyPicker:Update()
 		end
 
 		local Picking = false
@@ -1362,6 +1377,8 @@ do
 					Library:AttemptSave()
 
 					Event:Disconnect()
+
+					KeyPicker:Update()
 				end)
 			elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
 				ModeSelectOuter.Visible = true
@@ -1378,15 +1395,15 @@ do
 							Key == "MB1" and Input.UserInputType == Enum.UserInputType.MouseButton1
 							or Key == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2
 						then
-							KeyPicker.Toggled = not KeyPicker.Toggled
 							KeyPicker:DoClick()
 						end
 					elseif Input.UserInputType == Enum.UserInputType.Keyboard then
 						if Input.KeyCode.Name == Key then
-							KeyPicker.Toggled = not KeyPicker.Toggled
 							KeyPicker:DoClick()
 						end
 					end
+				else
+					KeyPicker:Update()
 				end
 
 				KeyPicker:Update()
@@ -1421,7 +1438,6 @@ do
 	BaseAddons.__namecall = function(Table, Key, ...)
 		return Funcs[Key](...)
 	end
-end
 
 local BaseGroupbox = {}
 
