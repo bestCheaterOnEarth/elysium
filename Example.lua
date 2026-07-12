@@ -1,14 +1,9 @@
 -- atlanta mixed with linoria
 
-local repo = 'https://raw.githubusercontent.com/christianfbi19/linoria-but-kinda-good/refs/heads/main/'
-
-local function get(file)
-    return game:HttpGet(repo .. file .. '?v=' .. tostring(tick()))
-end
-
-local Library = loadstring(get('Library.lua'))()
-local ThemeManager = loadstring(get('ThemeManager.lua'))()
-local SaveManager = loadstring(get('SaveManager.lua'))()
+local repo = 'https://raw.githubusercontent.com/christianfbi19/LinoriaLi/main/'
+local Library = 'https://raw.githubusercontent.com/christianfbi19/LinoriaLi/refs/heads/main/Library.lua'
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
 local Window = Library:CreateWindow({
     Title = { Accent = 'linoria', Rest = ' UI showcase' },
