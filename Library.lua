@@ -3163,6 +3163,10 @@ function Library:CreateWindow(...)
 		Config.Title = Arguments[1]
 		Config.AutoShow = Arguments[2] or false
 	end
+
+	if type(Config.Title) ~= "string" then
+		Config.Title = "No title"
+	end
 	if type(Config.TabPadding) ~= "number" then
 		Config.TabPadding = 0
 	end
