@@ -979,12 +979,12 @@ do
 					ColorPicker.Hue = ((MouseY - MinY) / (MaxY - MinY))
 					ColorPicker:Display()
 
-					RenderStepped:Wait()
+					RunService.RenderStepped:Wait()
 				end
 
 				Library:AttemptSave()
 			end
-		)
+		end)
 
 		DisplayFrame.InputBegan:Connect(function(Input)
 			if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
@@ -998,7 +998,8 @@ do
 				ContextMenu:Show()
 				ColorPicker:Hide()
 			end
-		)
+		end)
+		
 
 		if TransparencyBoxInner then
 			TransparencyBoxInner.InputBegan:Connect(function(Input)
@@ -2318,12 +2319,12 @@ do
 						Library:SafeCallback(Slider.Changed, Slider.Value)
 					end
 
-					RenderStepped:Wait()
+					game:GetService("RunService").RenderStepped:Wait()
 				end
 
 				Library:AttemptSave()
 			end
-		)
+		end)
 
 		Slider:Display()
 		Groupbox:AddBlank(Info.BlankSize or 6)
