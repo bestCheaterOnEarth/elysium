@@ -1,7 +1,7 @@
 -- atlanta mixed with linoria
 
 local repo = 'https://raw.githubusercontent.com/christianfbi19/LinoriaLi/main/'
-local Library = 'https://raw.githubusercontent.com/christianfbi19/LinoriaLi/refs/heads/main/Library.lua'
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
