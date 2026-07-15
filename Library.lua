@@ -345,7 +345,7 @@ end
 function Library:GetTextBounds(Text, FontFace, Size, Resolution)
 	local Params = Instance.new("GetTextBoundsParams")
 	Params.Text = Text
-	Params.Font = FontFace -- e.g. Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular)
+	Params.Font = FontFace
 	Params.Size = Size
 	Params.Width = math.huge
 
@@ -396,16 +396,6 @@ function Library:RemoveFromRegistry(Instance)
 end
 
 function Library:UpdateColorsUsingRegistry()
-	-- TODO: Could have an 'active' list of objects
-	-- where the active list only contains Visible objects.
-
-	-- IMPL: Could setup .Changed events on the AddToRegistry function
-	-- that listens for the 'Visible' propert being changed.
-	-- Visible: true => Add to active list, and call UpdateColors function
-	-- Visible: false => Remove from active list.
-
-	-- The above would be especially efficient for a rainbow menu color or live color-changing.
-
 	for Idx, Object in next, Library.Registry do
 		for Property, ColorIdx in next, Object.Properties do
 			if type(ColorIdx) == "string" then
@@ -418,18 +408,15 @@ function Library:UpdateColorsUsingRegistry()
 end
 
 function Library:GiveSignal(Signal)
-	-- Only used for signals not attached to library instances, as those should be cleaned up on object destruction by Roblox
 	table.insert(Library.Signals, Signal)
 end
 
 function Library:Unload()
-	-- Unload all of the signals
 	for Idx = #Library.Signals, 1, -1 do
 		local Connection = table.remove(Library.Signals, Idx)
 		Connection:Disconnect()
 	end
 
-	-- Call our unload callback, maybe to undo some hooks etc
 	if Library.OnUnload then
 		Library.OnUnload()
 	end
@@ -454,7 +441,6 @@ do
 
 	function Funcs:AddColorPicker(Idx, Info)
 		local ToggleLabel = self.TextLabel
-		-- local Container = self.Container;
 
 		assert(Info.Default, "AddColorPicker: Missing default value.")
 
@@ -485,7 +471,6 @@ do
 			Parent = ToggleLabel,
 		})
 
-		-- Transparency image taken from https://github.com/matas3535/SplixPrivateDrawingLibrary/blob/main/Library.lua cus i'm lazy
 		local CheckerFrame = Library:Create("ImageLabel", {
 			BorderSizePixel = 0,
 			Size = UDim2.new(0, 27, 0, 13),
@@ -494,11 +479,6 @@ do
 			Visible = not not Info.Transparency,
 			Parent = DisplayFrame,
 		})
-
-		-- 1/16/23
-		-- Rewrote this to be placed inside the Library ScreenGui
-		-- There was some issue which caused RelativeOffset to be way off
-		-- Thus the color picker would never show
 
 		local PickerFrameOuter = Library:Create("Frame", {
 			Name = "Color",
@@ -704,7 +684,7 @@ do
 			Position = UDim2.fromOffset(5, 5),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextSize = 12,
-			Text = ColorPicker.Title, --Info.Default;
+			Text = ColorPicker.Title,
 			TextWrapped = false,
 			ZIndex = 16,
 			Parent = PickerFrameInner,
@@ -1065,18 +1045,13 @@ do
 		local KeyPicker = {
 			Value = Info.Default,
 			Toggled = false,
-			Mode = Info.Mode or "Toggle", -- Always, Toggle, Hold
+			Mode = Info.Mode or "Toggle",
 			Type = "KeyPicker",
 			Callback = Info.Callback or function(Value) end,
 			ChangedCallback = Info.ChangedCallback or function(New) end,
 
 			SyncToggleState = Info.SyncToggleState or false,
 		}
-
-		if KeyPicker.SyncToggleState then
-			Info.Modes = { "Toggle" }
-			Info.Mode = "Toggle"
-		end
 
 		local PickOuter = Library:Create("Frame", {
 			BackgroundColor3 = Color3.new(0, 0, 0),
@@ -1282,6 +1257,10 @@ do
 					ContainerLabel.Visible = true
 				end
 
+				if ModeSelectOuter then
+					ModeSelectOuter.Visible = true
+				end
+
 				if PickOuter then
 					PickOuter.Active = true
 				end
@@ -1370,26 +1349,25 @@ do
 
 		Library:GiveSignal(InputService.InputBegan:Connect(function(Input)
 			if not Picking then
-				if KeyPicker.Mode == "Toggle" then
-					local Key = KeyPicker.Value
+				local Key = KeyPicker.Value
+				local isKeyMatch = false
 
-					if Key == "MB1" or Key == "MB2" then
-						if
-							Key == "MB1" and Input.UserInputType == Enum.UserInputType.MouseButton1
-							or Key == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2
-						then
-							KeyPicker.Toggled = not KeyPicker.Toggled
-							KeyPicker:DoClick()
-						end
-					elseif Input.UserInputType == Enum.UserInputType.Keyboard then
-						if Input.KeyCode.Name == Key then
-							KeyPicker.Toggled = not KeyPicker.Toggled
-							KeyPicker:DoClick()
-						end
-					end
+				if Key == "MB1" or Key == "MB2" then
+					isKeyMatch = (Key == "MB1" and Input.UserInputType == Enum.UserInputType.MouseButton1)
+						or (Key == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2)
+				elseif Input.UserInputType == Enum.UserInputType.Keyboard then
+					isKeyMatch = Input.KeyCode.Name == Key
 				end
 
-				KeyPicker:Update()
+				if isKeyMatch then
+					if KeyPicker.Mode == "Toggle" then
+						KeyPicker.Toggled = not KeyPicker.Toggled
+						KeyPicker:DoClick()
+					elseif KeyPicker.Mode == "Hold" and KeyPicker.SyncToggleState and ParentObj.Type == "Toggle" then
+						ParentObj:SetValue(true)
+						KeyPicker:Update()
+					end
+				end
 			end
 
 			if Input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1408,6 +1386,23 @@ do
 
 		Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
 			if not Picking then
+				local Key = KeyPicker.Value
+				local isKeyMatch = false
+
+				if Key == "MB1" or Key == "MB2" then
+					isKeyMatch = (Key == "MB1" and Input.UserInputType == Enum.UserInputType.MouseButton1)
+						or (Key == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2)
+				elseif Input.UserInputType == Enum.UserInputType.Keyboard then
+					isKeyMatch = Input.KeyCode.Name == Key
+				end
+
+				if isKeyMatch then
+					if KeyPicker.Mode == "Hold" and KeyPicker.SyncToggleState and ParentObj.Type == "Toggle" then
+						ParentObj:SetValue(false)
+						KeyPicker:Update()
+					end
+				end
+
 				KeyPicker:Update()
 			end
 		end))
@@ -1500,7 +1495,6 @@ do
 	end
 
 	function Funcs:AddButton(...)
-		-- TODO: Eventually redo this
 		local Button = {}
 		local function ProcessButtonParams(Class, Obj, ...)
 			local Props = select(1, ...)
@@ -1863,29 +1857,21 @@ do
 			end)
 		end
 
-		-- https://devforum.roblox.com/t/how-to-make-textboxes-follow-current-cursor-position/1368429/6
-		-- thank you nicemike40 :)
-
 		local function Update()
 			local PADDING = 2
 			local reveal = Container.AbsoluteSize.X
 
 			if not Box:IsFocused() or Box.TextBounds.X <= reveal - 2 * PADDING then
-				-- we aren't focused, or we fit so be normal
 				Box.Position = UDim2.new(0, PADDING, 0, 0)
 			else
-				-- we are focused and don't fit, so adjust position
 				local cursor = Box.CursorPosition
 				if cursor ~= -1 then
-					-- calculate pixel width of text from start to cursor
 					local subtext = string.sub(Box.Text, 1, cursor - 1)
 					local width =
 						TextService:GetTextSize(subtext, Box.TextSize, Box.Font, Vector2.new(math.huge, math.huge)).X
 
-					-- check if we're inside the box with the cursor
 					local currentCursorPos = Box.Position.X.Offset + width
 
-					-- adjust if necessary
 					if currentCursorPos < PADDING then
 						Box.Position = UDim2.fromOffset(PADDING - width, 0)
 					elseif currentCursorPos > reveal - PADDING - 1 then
@@ -2039,7 +2025,7 @@ do
 		ToggleRegion.InputBegan:Connect(function(Input)
 			if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverOpenedFrame() then
 				if not Toggle.Risky then
-					Toggle:SetValue(not Toggle.Value) -- Why was it not like this from the start?
+					Toggle:SetValue(not Toggle.Value)
 					Library:AttemptSave()
 				else
 					if Library.AllowRiskyFeatures then
@@ -2339,7 +2325,7 @@ do
 			Value = Info.Multi and {},
 			Multi = Info.Multi,
 			Type = "Dropdown",
-			SpecialType = Info.SpecialType, -- can be either 'Player' or 'Team'
+			SpecialType = Info.SpecialType,
 			Callback = Info.Callback or function(Value) end,
 		}
 
@@ -2873,7 +2859,6 @@ do
 	end
 end
 
--- < Create other UI elements >
 do
 	Library.NotificationArea = Library:Create("Frame", {
 		BackgroundTransparency = 1,
@@ -3487,7 +3472,6 @@ function Library:CreateWindow(...)
 			local BoxInner = Library:Create("Frame", {
 				BackgroundColor3 = Library.BackgroundColor,
 				BorderColor3 = Color3.new(0, 0, 0),
-				-- BorderMode = Enum.BorderMode.Inset;
 				Size = UDim2.new(1, -2, 1, -2),
 				Position = UDim2.new(0, 1, 0, 1),
 				ZIndex = 4,
@@ -3706,7 +3690,6 @@ function Library:CreateWindow(...)
 			local BoxInner = Library:Create("Frame", {
 				BackgroundColor3 = Library.BackgroundColor,
 				BorderColor3 = Color3.new(0, 0, 0),
-				-- BorderMode = Enum.BorderMode.Inset;
 				Size = UDim2.new(1, -2, 1, -2),
 				Position = UDim2.new(0, 1, 0, 1),
 				ZIndex = 4,
@@ -3864,7 +3847,6 @@ function Library:CreateWindow(...)
 				Tab:AddBlank(3)
 				Tab:Resize()
 
-				-- Show first tab (number is 2 cus of the UIListLayout that also sits in that instance)
 				if #TabboxButtons:GetChildren() == 2 then
 					Tab:Show()
 				end
@@ -3891,7 +3873,6 @@ function Library:CreateWindow(...)
 			end
 		end)
 
-		-- This was the first tab added, so we show it by default.
 		if #TabContainer:GetChildren() == 1 then
 			Tab:ShowTab()
 		end
@@ -3948,7 +3929,6 @@ function Library:CreateWindow(...)
 			BlurTween:Play()
 
 			task.spawn(function()
-				-- TODO: add cursor fade?
 				local State = InputService.MouseIconEnabled
 
 				local Cursor = Drawing.new("Triangle")
