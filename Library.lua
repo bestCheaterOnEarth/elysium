@@ -1074,11 +1074,19 @@ do
 			SyncToggleState = Info.SyncToggleState or false,
 		}
 
-		-- just remove that.. so we can have hold and toggle
-		-- if KeyPicker.SyncToggleState then
-		--     Info.Modes = { "Toggle" }
-		--     Info.Mode = "Toggle"
-		-- end
+		 if KeyPicker.Mode == "Hold" then            
+            KeyPicker.SyncToggleState = false
+            Info.Modes = { "Hold" }
+            Info.Mode = "Hold"
+        end
+
+        if KeyPicker.SyncToggleState then
+            Info.Modes = { "Toggle", "Hold" }
+
+            if not table.find(Info.Modes, Info.Mode) then
+                Info.Mode = "Toggle"
+            end
+        end
 
 		local PickOuter = Library:Create("Frame", {
 			BackgroundColor3 = Color3.new(0, 0, 0),
