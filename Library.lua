@@ -1,4 +1,4 @@
--- i put the wrong file. sorry
+-- from some guy on v3rm, he just did what i did but changed the font. ggs bro.
 
 writefile(
 	"Tahoma.ttf",
@@ -979,7 +979,7 @@ do
 					ColorPicker.Hue = ((MouseY - MinY) / (MaxY - MinY))
 					ColorPicker:Display()
 
-					RunService.RenderStepped:Wait()
+					RenderStepped:Wait()
 				end
 
 				Library:AttemptSave()
@@ -999,7 +999,6 @@ do
 				ColorPicker:Hide()
 			end
 		end)
-		
 
 		if TransparencyBoxInner then
 			TransparencyBoxInner.InputBegan:Connect(function(Input)
@@ -1075,11 +1074,8 @@ do
 		}
 
 		if KeyPicker.SyncToggleState then
-			Info.Modes = { "Toggle", "Hold" }
-
-			if not table.find(Info.Modes, Info.Mode) then
-				Info.Mode = "Toggle"
-			end
+			Info.Modes = { "Toggle" }
+			Info.Mode = "Toggle"
 		end
 
 		local PickOuter = Library:Create("Frame", {
@@ -1161,12 +1157,53 @@ do
 			Parent = Library.KeybindContainer,
 		}, true)
 
-		function KeyPicker:SyncParent()
-			if not KeyPicker.SyncToggleState then return end
-			if not ParentObj or not ParentObj.SetValue then return end
+		local Modes = Info.Modes or { "Always", "Toggle", "Hold" }
+		local ModeButtons = {}
 
-			local state = KeyPicker:GetState()
-			ParentObj:SetValue(state)
+		for Idx, Mode in next, Modes do
+			local ModeButton = {}
+
+			local Label = Library:CreateLabel({
+				Active = false,
+				Size = UDim2.new(1, 0, 0, 15),
+				TextSize = 12,
+				Text = Mode,
+				ZIndex = 16,
+				Parent = ModeSelectInner,
+			})
+
+			function ModeButton:Select()
+				for _, Button in next, ModeButtons do
+					Button:Deselect()
+				end
+
+				KeyPicker.Mode = Mode
+
+				Label.TextColor3 = Library.AccentColor
+				Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
+
+				ModeSelectOuter.Visible = false
+			end
+
+			function ModeButton:Deselect()
+				KeyPicker.Mode = nil
+
+				Label.TextColor3 = Library.FontColor
+				Library.RegistryMap[Label].Properties.TextColor3 = "FontColor"
+			end
+
+			Label.InputBegan:Connect(function(Input)
+				if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+					ModeButton:Select()
+					Library:AttemptSave()
+				end
+			end)
+
+			if Mode == KeyPicker.Mode then
+				ModeButton:Select()
+			end
+
+			ModeButtons[Mode] = ModeButton
 		end
 
 		function KeyPicker:Update()
@@ -1192,8 +1229,6 @@ do
 			end
 
 			Library.KeybindFrame.Size = UDim2.new(0, math.max(XSize + 10, 210), 0, YSize + 25)
-
-			KeyPicker:SyncParent()
 		end
 
 		function KeyPicker:GetState()
@@ -1269,65 +1304,12 @@ do
 		end
 
 		function KeyPicker:DoClick()
-			if KeyPicker.Mode == "Toggle" then
-				KeyPicker.Toggled = not KeyPicker.Toggled
+			if ParentObj.Type == "Toggle" and KeyPicker.SyncToggleState then
+				ParentObj:SetValue(not ParentObj.Value)
 			end
 
-			local state = KeyPicker:GetState()
-			Library:SafeCallback(KeyPicker.Callback, state)
-			Library:SafeCallback(KeyPicker.Clicked, state)
-
-			KeyPicker:Update()
-		end
-
-		local Modes = Info.Modes or { "Always", "Toggle", "Hold" }
-		local ModeButtons = {}
-
-		for Idx, Mode in next, Modes do
-			local ModeButton = {}
-
-			local Label = Library:CreateLabel({
-				Active = false,
-				Size = UDim2.new(1, 0, 0, 15),
-				TextSize = 12,
-				Text = Mode,
-				ZIndex = 16,
-				Parent = ModeSelectInner,
-			})
-
-			function ModeButton:Select()
-				for _, Button in next, ModeButtons do
-					Button:Deselect()
-				end
-
-				KeyPicker.Mode = Mode
-
-				Label.TextColor3 = Library.AccentColor
-				Library.RegistryMap[Label].Properties.TextColor3 = "AccentColor"
-
-				ModeSelectOuter.Visible = false
-				KeyPicker:Update()
-			end
-
-			function ModeButton:Deselect()
-				KeyPicker.Mode = nil
-
-				Label.TextColor3 = Library.FontColor
-				Library.RegistryMap[Label].Properties.TextColor3 = "FontColor"
-			end
-
-			Label.InputBegan:Connect(function(Input)
-				if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-					ModeButton:Select()
-					Library:AttemptSave()
-				end
-			end)
-
-			if Mode == KeyPicker.Mode then
-				ModeButton:Select()
-			end
-
-			ModeButtons[Mode] = ModeButton
+			Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
+			Library:SafeCallback(KeyPicker.Clicked, KeyPicker.Toggled)
 		end
 
 		local Picking = false
@@ -1380,8 +1362,6 @@ do
 					Library:AttemptSave()
 
 					Event:Disconnect()
-
-					KeyPicker:Update()
 				end)
 			elseif Input.UserInputType == Enum.UserInputType.MouseButton2 and not Library:MouseIsOverOpenedFrame() then
 				ModeSelectOuter.Visible = true
@@ -1398,15 +1378,15 @@ do
 							Key == "MB1" and Input.UserInputType == Enum.UserInputType.MouseButton1
 							or Key == "MB2" and Input.UserInputType == Enum.UserInputType.MouseButton2
 						then
+							KeyPicker.Toggled = not KeyPicker.Toggled
 							KeyPicker:DoClick()
 						end
 					elseif Input.UserInputType == Enum.UserInputType.Keyboard then
 						if Input.KeyCode.Name == Key then
+							KeyPicker.Toggled = not KeyPicker.Toggled
 							KeyPicker:DoClick()
 						end
 					end
-				else
-					KeyPicker:Update()
 				end
 
 				KeyPicker:Update()
@@ -1424,7 +1404,7 @@ do
 					ModeSelectOuter.Visible = false
 				end
 			end
-		end)
+		end))
 
 		Library:GiveSignal(InputService.InputEnded:Connect(function(Input)
 			if not Picking then
@@ -1441,6 +1421,7 @@ do
 	BaseAddons.__namecall = function(Table, Key, ...)
 		return Funcs[Key](...)
 	end
+end
 
 local BaseGroupbox = {}
 
@@ -2043,6 +2024,13 @@ do
 			Toggle.Value = Bool
 			Toggle:Display()
 
+			for _, Addon in next, Toggle.Addons do
+				if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
+					Addon.Toggled = Bool
+					Addon:Update()
+				end
+			end
+
 			Library:SafeCallback(Toggle.Callback, Toggle.Value)
 			Library:SafeCallback(Toggle.Changed, Toggle.Value)
 			Library:UpdateDependencyBoxes()
@@ -2311,7 +2299,7 @@ do
 						Library:SafeCallback(Slider.Changed, Slider.Value)
 					end
 
-					game:GetService("RunService").RenderStepped:Wait()
+					RenderStepped:Wait()
 				end
 
 				Library:AttemptSave()
@@ -2867,23 +2855,23 @@ do
 			end
 
 			Depbox.Dependencies = Dependencies
-				Depbox:Update()
-			end
-
-			Depbox.Container = Frame
-
-			setmetatable(Depbox, BaseGroupbox)
-
-			table.insert(Library.DependencyBoxes, Depbox)
-
-			return Depbox
+			Depbox:Update()
 		end
 
-		BaseGroupbox.__index = Funcs
-		BaseGroupbox.__namecall = function(Table, Key, ...)
-			return Funcs[Key](...)
-		end
+		Depbox.Container = Frame
+
+		setmetatable(Depbox, BaseGroupbox)
+
+		table.insert(Library.DependencyBoxes, Depbox)
+
+		return Depbox
 	end
+
+	BaseGroupbox.__index = Funcs
+	BaseGroupbox.__namecall = function(Table, Key, ...)
+		return Funcs[Key](...)
+	end
+end
 
 -- < Create other UI elements >
 do
@@ -4076,13 +4064,12 @@ end
 local function OnPlayerChange()
 	local PlayerList = GetPlayersString()
 
-		for _, Value in next, Options do
-			if Value.Type == "Dropdown" and Value.SpecialType == "Player" then
-				Value:SetValues(PlayerList)
-			end
+	for _, Value in next, Options do
+		if Value.Type == "Dropdown" and Value.SpecialType == "Player" then
+			Value:SetValues(PlayerList)
 		end
 	end
-end --.. elysium need a IQ test. NOW
+end
 
 Players.PlayerAdded:Connect(OnPlayerChange)
 Players.PlayerRemoving:Connect(OnPlayerChange)
